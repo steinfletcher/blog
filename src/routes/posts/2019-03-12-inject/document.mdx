@@ -1,0 +1,120 @@
+import styles from './document.module.css'
+
+<div className={styles["Welcome"]}>
+
+## Introduction
+
+In this post we present one way of injecting dependencies in go - using higher order functions and closures.
+
+Consider the following domain layer function that returns the user's profile.
+
+```go
+func GetUserProfile(id string) UserProfile {
+    rows, err := db.Query("SELECT ...")
+    ...
+    return profileText
+}
+```
+ 
+We will want to separate the code that works on the user data from the code that accesses the database. In this example we want to unit test the domain layer and any business logic whilst providing a mock for the database access function. Let's separate these concerns so each function has a single responsibility.
+
+```go
+// domain layer function containing any business logic or mapping code
+func GetUserProfile(id string) string {
+    ...
+}
+
+// database access layer function
+func SelectUserByID(id string) string {
+    ...
+}
+```
+
+We can also reuse the `SelectUserByID` function across services. We'll need a way to inject `SelectUserByID` into `GetUserProfile` so we can unit test `GetUserProfile` and mock the database access layer in tests. One to achieve this in `go` is to use a type alias for the function definition.
+
+# Type aliases
+
+Making `GetUserProfile` depend on an abstraction means we can inject a mock of the data access layer in the test. Two common ways to do this in go are to use an interface or a type alias. Type aliases are simple and don't require generation of a struct so let's employ one here. We will define type aliases for both functions
+
+```go
+type SelectUserByID func(id string) User
+
+type GetUserProfile func(id string) UserProfile
+
+func NewGetUserProfile(selectUser selectUserByID) GetUserProfile {
+	return func(id string) string {
+		user := selectUser(id)
+		return user.ProfileText
+	}
+}
+
+func NewSelectUserByID() SelectUserByID {
+	return func(id string) string {
+		...
+		return User{ProfileText: userRow.ProfileText}
+	}
+}
+```
+
+`SelectUserByID` is a function that takes a user ID and returns a User. We do not define its implementation. `NewGetUserProfile` is a factory method that takes its dependencies as an argument - `SelectUserByID` - then returns a function that can be invoked by the caller. This strategy uses a closure to give the inner function access to the dependency from the outer function.
+
+## Equivalent OO example
+
+If you are familiar with languages such as Java, this is analogous to creating a class, injecting the class dependencies into the constructor then accessing the dependency in a method. There is no functional difference between the approaches - you can think of a type alias of a function as an interface with a single abstract method (SAM). In Java we might use constructor injection to inject dependencies.
+
+```java
+interface DB {
+    User SelectUser(String id)
+}
+
+public class UserService {
+    private final DB db;
+    
+    public UserService(DB db) { // inject dependency into constructor
+        this.DB = db;
+    }
+
+    public UserProfile getUserProfile(String id) { // access method
+        User user = this.DB.SelectUser(id);
+        ...
+        return userProfile;
+    }
+}
+```
+
+where the go equivalent using a higher order functions would be
+
+```go
+type SelectUser func(id string) User
+
+type GetUserProfile func(id string) UserProfile
+
+func NewGetUserProfile(selectUser SelectUser) { // factory method to inject dependency
+    return func(id string) UserProfile { // access method
+        user := selectUser(id)
+        ...
+        return userProfile        
+    } 
+}
+```
+
+# Testing
+
+We can now unit test our domain layer function, providing a mock for the database access layer.
+
+```go
+func TestGetUserProfile(t *testing.T) {
+	selectUserMock := func(id string) User {
+		return User{name: "jan"}
+	}
+	getUser := NewGetUserProfile(selectUserMock)
+
+	user := getUser("12345")
+
+	assert.Equal(t, UserProfile{ID: "12345", Name: "jan"}, user)
+}
+```
+
+You can find a more comprehensive code example on [github.com](https://github.com/steinfletcher/func-dependency-injection-go)
+
+ </div>
