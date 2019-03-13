@@ -20,45 +20,52 @@ We will want to separate the code that works on the user data from the code that
 
 ```go
 // domain layer function containing any business logic or mapping code
-func GetUserProfile(id string) string {
+func GetUserProfile(id string) User {
     ...
 }
 
 // database access layer function
-func SelectUserByID(id string) string {
+func SelectUserByID(id string) UserProfile {
     ...
 }
 ```
 
-We can also reuse the `SelectUserByID` function across services. We'll need a way to inject `SelectUserByID` into `GetUserProfile` so we can unit test `GetUserProfile` and mock the database access layer in tests. One to achieve this in `go` is to use a type alias for the function definition.
+We can also reuse the `SelectUserByID` function in other domain functions. We'll need a way to inject `SelectUserByID` into `GetUserProfile` so we can unit test `GetUserProfile` and mock the database access layer in tests. One way to achieve this in `go` is to use a type alias for the function definition.
 
 # Type aliases
 
-Making `GetUserProfile` depend on an abstraction means we can inject a mock of the data access layer in the test. Two common ways to do this in go are to use an interface or a type alias. Type aliases are simple and don't require generation of a struct so let's employ one here. We will define type aliases for both functions
+Making `GetUserProfile` depend on an abstraction means we can inject a mock of the data access layer in the test. Two common ways to do this in `go` are to use an interface or a type alias. Type aliases are simple and don't require generation of a struct so let's employ one here. We will define type aliases for both functions
 
 ```go
 type SelectUserByID func(id string) User
 
 type GetUserProfile func(id string) UserProfile
 
-func NewGetUserProfile(selectUser selectUserByID) GetUserProfile {
+func NewGetUserProfile(selectUser SelectUserByID) GetUserProfile {
 	return func(id string) string {
 		user := selectUser(id)
 		return user.ProfileText
 	}
 }
 
-func NewSelectUserByID() SelectUserByID {
-	return func(id string) string {
-		...
-		return User{ProfileText: userRow.ProfileText}
-	}
+func selectUser(id string) User {
+	...
+	return User{ProfileText: userRow.ProfileText}
 }
 ```
 
-`SelectUserByID` is a function that takes a user ID and returns a User. We do not define its implementation. `NewGetUserProfile` is a factory method that takes its dependencies as an argument - `SelectUserByID` - then returns a function that can be invoked by the caller. This strategy uses a closure to give the inner function access to the dependency from the outer function.
+`SelectUserByID` is a function that takes a user ID and returns a User. We do not define its implementation. `NewGetUserProfile` is a factory method that takes its dependencies as an argument - `selectUser` - then returns a function that can be invoked by the caller. This strategy uses a closure to give the inner function access to the dependency from the outer function. The closure captures the variables and constants of the context in which it is defined. This is referred to as `closing over` those variables and constants.
 
-## Equivalent OO example
+We can then invoke the domain function like so.
+
+```go
+// wire dependencies somewhere in the application
+getUser := NewGetUserProfile(selectUser)
+
+user := getUser("1234")
+```
+
+## An alternative view
 
 If you are familiar with languages such as Java, this is analogous to creating a class, injecting the class dependencies into the constructor then accessing the dependency in a method. There is no functional difference between the approaches - you can think of a type alias of a function as an interface with a single abstract method (SAM). In Java we might use constructor injection to inject dependencies.
 
@@ -82,7 +89,7 @@ public class UserService {
 }
 ```
 
-where the go equivalent using a higher order functions would be
+where the `go` equivalent using a higher order functions would be
 
 ```go
 type SelectUser func(id string) User
@@ -100,7 +107,7 @@ func NewGetUserProfile(selectUser SelectUser) { // factory method to inject depe
 
 # Testing
 
-We can now unit test our domain layer function, providing a mock for the database access layer.
+We can now unit test our domain layer function providing a mock for the database access layer.
 
 ```go
 func TestGetUserProfile(t *testing.T) {
@@ -115,6 +122,6 @@ func TestGetUserProfile(t *testing.T) {
 }
 ```
 
-You can find a more comprehensive code example on [github.com](https://github.com/steinfletcher/func-dependency-injection-go)
+You can find a more comprehensive code example on [github.com/steinfletcher/func-dependency-injection-go](https://github.com/steinfletcher/func-dependency-injection-go). The example contains a http server that exposes a REST endpoint.
 
  </div>

@@ -1,7 +1,7 @@
 export default {
-    title: 'Higher order functions and closures - dependency injection in Golang',
+    title: 'Dependency injection in Golang using higher order functions',
     tags: ['golang', 'java', 'dependency injection'],
-    spoiler: 'One approach to dependency injection in go (without any magic). Useful if you are coming from Java',
+    spoiler: 'In this post we explore an approach to dependency injection in go (without any magic or frameworks)',
     getContent: () => {
         // @ts-ignore
         return import('./document.mdx')
