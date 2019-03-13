@@ -1,0 +1,27 @@
+{
+  "name": "blog",
+  "type": "static",
+  "profile": "personal",
+  "regions": ["eu-west-2"],
+  "static": {
+    "dir": "build"
+  },
+  "lambda": {
+    "memory": 1024
+  },
+  "redirects": {
+    "/*": {
+      "location": "/",
+      "status": 200
+    }
+  },
+  "hooks": {
+    "clean": "rm -fr build",
+    "build": "npm run build"
+  },
+  "stages": {
+    "staging": {
+      "domain": "stein.wtf"
+    }
+  }
+}
