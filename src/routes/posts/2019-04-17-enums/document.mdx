@@ -1,0 +1,125 @@
+import styles from './document.module.css'
+
+<div className={styles["Welcome"]}>
+
+The [full source code](https://github.com/steinfletcher/gonum) is available on github.
+
+## Idiomatic enums in Go
+
+Go does not have first class support for enumerated types. One way to define an enumerated type is to construct a set of related constants aided by a type alias. Iota may be used to predefine successive incrementing integer constants. We can define a `Color` type like so.
+
+```go
+package main
+
+import "fmt"
+
+type Color int
+
+const (
+	Red Color = iota // 0
+	Blue             // 1
+)
+
+func main() {
+	var b1 Color = Red
+	b1 = Red
+	fmt.Println(b1) // prints 0
+
+	var b2 Color = 1
+	fmt.Println(b2 == Blue) // prints true
+
+	var b3 Color
+	b3 = 42
+	fmt.Println(b3)  // prints 42
+}
+```
+
+This pattern is very common in Go code. Whilst being idiomatic the approach has some drawbacks. There is no static type checking since any integer can be passed as a `Color`. There is no serialization support - it's pretty uncommon that a developer will want to serialize this to an integer over the wire or to a database record. There is no support for a readable display value - we'll need to convert the const to a display value in code.
+
+It's important to know the idioms of a language and when to break those idioms. More often than not the argument for idioms is used to shut down arguments. This can sometimes be the death of creativity.
+
+## Designing an enumerated type
+
+One of Go's best features is its simplicity - developers coming from other languages can generally be efficient in Go very quickly. On the flip side this imposes constraints, such as the lack of generics which can lead to boilerplate code. To overcome some of these shortcomings the community has embraced code generation as a mechanism to define more powerful and flexible types.
+
+Let's use this approach to define an enumerated type. One approach would be to generate an enum as a struct. We can also attach methods to the struct. Structs also support a meta tag which will be useful for defining the display value and description.
+
+```go
+type ColorEnum struct {
+    Red  string `enum:"RED"`
+    Blue string `enum:"BLUE"`
+}
+```
+
+All we need to do now is to generate an instance of the struct for each field.
+
+```go
+var Red  = Color{name: "RED"}
+var Blue = Color{name: "BLUE"}
+```
+
+We can then attach methods to the Color struct to support JSON encoding/decoding. We implement the `Marshaler` interface to support JSON encoding.
+
+```go
+func (c Color) MarshalJSON() ([]byte, error) {
+    return json.Marshal(c.name)
+}
+```
+
+Go will invoke our custom implementation when serializing this type as JSON. Likewise we can implement the `Unmarshaler` interface which will enable us to consume enum types - this allows us to define enumerated types directly on data transfer objects in our APIs.
+
+```go
+func (c *Color) UnmarshalJSON(b []byte) error {
+   	return json.Unmarshal(b, c.name)
+}
+```
+
+## Generating the code
+
+### Traversing the abstract syntax tree
+
+Before rendering a template to generate code we will need to parse the `ColorEnum` type in the source code. Two common approaches are to use the `reflect` and `ast` packages. We will need to scan structs declared at the package level. The `ast` package has the capability to generate an abstract syntax tree representing the Go source in the package. We can then traverse the syntax tree and match a provided type. This type and defined struct tags can then be parsed and used to build a model to generate a template. We start off by loading a go package
+
+
+```go
+cfg := &packages.Config{
+	Mode:  packages.LoadSyntax,
+	Tests: false,
+}
+pkgs, err := packages.Load(cfg, patterns...)
+```
+
+The `pkgs` type contains syntax trees for each file in the package. The `ast.Inspect` method can then be used to walk the AST. It takes a function that will be called for each node encountered. We loop over each file and process the syntax tree for that file.
+
+```go
+for _, file := range g.pkg.files {
+...
+    ast.Inspect(file.file, func(node ast.Node) bool {
+	    // ...handle node, check if it's something we are interested in
+    })
+}
+```
+
+The consumer should define this function and then handle token types they are interested in, in our case structs that have an `enum:` tag defined. We simply construct a model based on the data whilst parsing the tokens.
+
+### Templated code
+
+Now that the model is defined and ready we need to convert our model to working Go source code. Ultimately we want to generate something like this, where we can pass a model to define the concrete types
+
+```go
+// {{.NewType}} is the enum that instances should be created from
+type {{.NewType}} struct {
+	name  string
+}
+
+// Enum instances
+{{- range $e := .Fields}}
+var {{.Value}} = {{$.NewType}}{name: "{{.Key}}"}
+{{- end}}
+```
+
+There are a few approaches to generating code. The [Stringer](https://github.com/golang/tools/blob/master/cmd/stringer/stringer.go) tool writes to standard error using the `fmt` package. Whilst this is easy to get going it becomes unwieldy and difficult to debug as the generator scales. A more sane approach is to use the `text/template` package and utilise Go's powerful templating library. It allows you to decouple logic that generates the model from the templating leading to separated concerns and code that is easier to reason about.
+
+Read the [full source](https://github.com/steinfletcher/gonum) code on github.
+
+</div>
