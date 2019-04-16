@@ -2,9 +2,11 @@ import styles from './document.module.css'
 
 <div className={styles["Welcome"]}>
 
-The [full source code](https://github.com/steinfletcher/gonum) is available on github.
+In this post we look at generating a powerful enumerated type using `go generate` and abstract syntax tree traversal.
 
-## Idiomatic enums in Go
+The output of this post is a CLI to generate enumerated types. The [full source code](https://github.com/steinfletcher/gonum) is available on github.
+
+## Idiomatic Go
 
 Go does not have first class support for enumerated types. One way to define an enumerated type is to construct a set of related constants aided by a type alias. Iota may be used to predefine successive incrementing integer constants. We can define a `Color` type like so.
 
@@ -74,11 +76,27 @@ func (c *Color) UnmarshalJSON(b []byte) error {
 }
 ```
 
+We can also attach some helper methods to generate a slice of the display values.
+
+```go
+// ColorNames returns the displays values of all enum instances as a slice
+func ColorNames() []string { ... }
+```
+
+We'd also like support to generate an enum instance from a string, so let's add that.
+
+```go
+// NewColor generates a new Color from the given display value (name)
+func NewColor(value string) (Color, error) { ... }
+```
+
+This is really extensible and you might want to add other methods to return the name, support errors by implement `Error() string` and support `Stringer` by implementing `String() string`.
+
 ## Generating the code
 
 ### Traversing the abstract syntax tree
 
-Before rendering a template to generate code we will need to parse the `ColorEnum` type in the source code. Two common approaches are to use the `reflect` and `ast` packages. We will need to scan structs declared at the package level. The `ast` package has the capability to generate an abstract syntax tree representing the Go source in the package. We can then traverse the syntax tree and match a provided type. This type and defined struct tags can then be parsed and used to build a model to generate a template. We start off by loading a go package
+Before rendering a template to generate code we will need to parse the `ColorEnum` type in the source code. Two common approaches are to use the `reflect` and `ast` packages. We will need to scan structs declared at the package level. The `ast` package has the capability to generate an abstract syntax tree - a traversable data structure representing Go source code. We can then traverse the syntax tree and match a provided type. This type and defined struct tags can then be parsed and used to build a model to generate a template. We start off by loading a go package
 
 
 ```go
@@ -89,10 +107,10 @@ cfg := &packages.Config{
 pkgs, err := packages.Load(cfg, patterns...)
 ```
 
-The `pkgs` type contains syntax trees for each file in the package. The `ast.Inspect` method can then be used to walk the AST. It takes a function that will be called for each node encountered. We loop over each file and process the syntax tree for that file.
+The `pkgs` variable contains syntax trees for each file in the package. The `ast.Inspect` method can then be used to walk the AST. It takes a function that will be called for each node encountered. We loop over each file and process the syntax tree for that file.
 
 ```go
-for _, file := range g.pkg.files {
+for _, file := range pkg.files {
 ...
     ast.Inspect(file.file, func(node ast.Node) bool {
 	    // ...handle node, check if it's something we are interested in
@@ -100,11 +118,17 @@ for _, file := range g.pkg.files {
 }
 ```
 
-The consumer should define this function and then handle token types they are interested in, in our case structs that have an `enum:` tag defined. We simply construct a model based on the data whilst parsing the tokens.
+The consumer should define this function and then filter by token types they are interested in. You can filter by structs with this check on the node
+ 
+```go
+node.Tok == token.STRUCT { ... }
+```
+ 
+In our case we filter by struct types that have an `enum:` tag defined. We simply process each token in the source and construct a model (custom Go struct) based on the data encountered.
 
-### Templated code
+### Rendering source code
 
-Now that the model is defined and ready we need to convert our model to working Go source code. Ultimately we want to generate something like this, where we can pass a model to define the concrete types
+There are a few approaches to generating code. The [Stringer](https://github.com/golang/tools/blob/master/cmd/stringer/stringer.go) tool writes to standard out using the `fmt` package. Whilst this is easy to get going it becomes unwieldy and difficult to debug as the generator scales. A more sane approach is to use the `text/template` package and utilise Go's powerful templating library. It allows you to decouple logic that generates the model from the templating leading to separated concerns and code that is easier to reason about. The resulting type definitions might look like this.
 
 ```go
 // {{.NewType}} is the enum that instances should be created from
@@ -116,9 +140,30 @@ type {{.NewType}} struct {
 {{- range $e := .Fields}}
 var {{.Value}} = {{$.NewType}}{name: "{{.Key}}"}
 {{- end}}
+
+... code to generate methods
 ```
 
-There are a few approaches to generating code. The [Stringer](https://github.com/golang/tools/blob/master/cmd/stringer/stringer.go) tool writes to standard error using the `fmt` package. Whilst this is easy to get going it becomes unwieldy and difficult to debug as the generator scales. A more sane approach is to use the `text/template` package and utilise Go's powerful templating library. It allows you to decouple logic that generates the model from the templating leading to separated concerns and code that is easier to reason about.
+We can then render the template from our model
+
+```go
+t, err := template.New(tmpl).Parse(tmpl)
+if err != nil {
+	log.Fatal("instance template parse error: ", err)
+}
+
+err = t.Execute(buf, model)
+```
+
+It's best not to worry about formatting when developing the template. The `format` package has a method which take source code as a parameter and returns formatted Go code, so let Go handle this for you.
+
+```go
+func Source(src []byte) ([]byte, error) { ... }
+```
+
+## Conclusion
+
+In this post we looked at a method to generate an enumerated type by parsing Go source code. This approach can be used as a template to build other code generators that need to interpret source code. We used Go's `text/template` library to render the source code in a maintainable way.
 
 Read the [full source](https://github.com/steinfletcher/gonum) code on github.
 
