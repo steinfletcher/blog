@@ -2,7 +2,87 @@ import styles from './document.module.css'
 
 <div className={styles["Welcome"]}>
 
-## Using DDD to structure the app
+1. [Domain Driven Design](#domain-driven-design)
+1. [Testing strategy](#testing-strategy)
+1. [Dependency Injection](#dependency-injection)
+1. [Error Handling](#error-handling)
+1. [Logging](#logging)
+1. [Database access](#database-access)
+1. [Self documenting APIs](#self-documenting-apis)
+
+## Project structure
+
+Defining a clear domain language helps developers to build a mental model of the system. It minimises ambiguity and describes how data is created, stored and changed. We structure the application following Ben Johnson's [Standard Package Layout](https://medium.com/@benbjohnson/standard-package-layout-7cdbc8391fc1) which is based on these simple rules.
+
+1. [Domain types live in the root package](#domain-types-live-in-the-root-package)
+1. [Dependencies are grouped by subpackages](#dependencies-are-grouped-by-subpackages)
+1. [Main package wires together dependencies](#main-package-wires-together-dependencies)
+
+### Domain types live in the root package
+
+The domain models the system and is the heart of the application. Changing code here changes the essence of the application. If you are writing library software this might contain a `Book`, `User` and `Reservation` type. You will not see any framework code here - only structs, interfaces and functions that operate on the data. This layer will not perform any side effects such as network calls - that's an implementation detail. We eliminate circular dependencies because the root package will not depend on any other package in the application. To illustrate this, we might have a `Loan` type
+
+```go
+type Loan struct {
+	Book       Book       `json:"book"`
+	User       User       `json:"user"`
+	Start      time.Time  `json:"start"`
+	End        time.Time  `json:"end"`
+	Return     *time.Time `json:"return"`
+	Extensions int        `json:"extensions"`
+}
+```
+
+This type might have a receiver function that encapsulates the application's core behaviour.
+
+```go
+func (l *Loan) Extend() error {
+	if r.Extensions >= MaxExtensions {
+		return ErrExtensionNotAvailable
+	}
+	r.End = r.End.Add(time.Hour * 24 * LoanPeriodDays)
+	return nil
+}
+```
+
+### Dependencies are grouped by subpackages
+
+We might define a `LoanService` interface in the domain layer. This interface describes operations on the data. 
+
+```go
+type LoanService interface {
+	Loan(userID ID, bookID ID) (ID, error)
+	Extend(id ID) error
+	Return(id ID) error
+	GetAll(userID ID) error
+}
+```
+
+Implementations of this service are "plugged in" similar to the ports and adapters/hexagonal architecture pattern. The implementation code could be a database access layer or a HTTP client that talks to an external service. These services can be switched out without changing the purpose of the application - this drills home the point that we don't include business logic in these services and they are more for orchestration. We might implement the `LoanService` using postgres as follows.
+
+```go
+type loanService struct {
+	db *sqlx.DB
+}
+
+func (r loanService) GetAll(userID library.ID) ([]library.Loan, error) {
+	var loans []loanRecord
+	err := withTransaction(r.db, func(tx *sqlx.Tx) error {
+		return tx.Select(&loans, `SELECT * FROM loans WHERE users_id=$1`, userID)
+	})
+	if err != nil {
+		return []library.Loan{}, err
+	}
+	return mapLoans(loans), nil
+}
+```
+
+### Main package wires together dependencies
+
+The `main` package wires together the dependencies achieving inversion of control (IoC). This helps to make the application testable and decouples the parts.
+
+1. [Testing strategy](#testing-strategy)
+
 
 ## Testing strategy
 
@@ -13,6 +93,8 @@ import styles from './document.module.css'
 ## Dependency injection
 
 ## Error handling
+
+## Logging
 
 ## Database access
 
