@@ -32,11 +32,11 @@ func SelectUserByID(id string) UserProfile {
 }
 ```
 
-We can also reuse the `SelectUserByID` function in other domain functions. We'll need a way to inject `SelectUserByID` into `GetUserProfile` so we can unit test `GetUserProfile` and mock the database access layer in tests. One way to achieve this in `go` is to use a type alias for the function definition.
+We can also reuse the `SelectUserByID` function in other domain functions. We'll need a way to inject `SelectUserByID` into `GetUserProfile` so we can unit test `GetUserProfile` and mock the database access layer in tests. One way to achieve this in `go` is to use a type definition for the function definition.
 
-# Type aliases
+# Type definitions
 
-Making `GetUserProfile` depend on an abstraction means we can inject a mock of the data access layer in the test. Two common ways to do this in `go` are to use an interface or a type alias. Type aliases are simple and don't require generation of a struct so let's employ one here. We will define type aliases for both functions
+Making `GetUserProfile` depend on an abstraction means we can inject a mock of the data access layer in the test. Two common ways to do this in `go` are to use an interface or a type definition. Type definitions are simple and don't require generation of a struct so let's employ one here. We will define type definitions for both functions
 
 ```go
 type SelectUserByID func(id string) User
@@ -69,7 +69,7 @@ user := getUser("1234")
 
 ## An alternative view
 
-If you are familiar with languages such as Java, this is analogous to creating a class, injecting the class dependencies into the constructor then accessing the dependency in a method. There is no functional difference between the approaches - you can think of a type alias of a function as an interface with a single abstract method (SAM). In Java we might use constructor injection to inject dependencies.
+If you are familiar with languages such as Java, this is analogous to creating a class, injecting the class dependencies into the constructor then accessing the dependency in a method. There is no functional difference between the approaches - you can think of a type definition of a function as an interface with a single abstract method (SAM). In Java we might use constructor injection to inject dependencies.
 
 ```java
 interface DB {
