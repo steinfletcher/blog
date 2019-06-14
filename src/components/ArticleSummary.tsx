@@ -13,7 +13,10 @@ function ArticleSummary({blogRoot, route}: ArticleSummaryProps) {
     return (
         <article className={styles.ArticleSummary}>
             <h2>
-                <Link href={route.url.href}>{route.title}</Link>
+                {route.data.redirect
+                    ? <Link target="_blank" href={route.data.redirect}>{route.title}</Link>
+                    : <Link href={route.url.href}>{route.title}</Link>
+                }
             </h2>
             <ArticleMeta blogRoot={blogRoot} data={route.data}/>
             <p>{route.data.spoiler}</p>
